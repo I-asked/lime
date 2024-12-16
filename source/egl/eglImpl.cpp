@@ -1,12 +1,18 @@
 #include "proctab.h"
 
-#include "limeDevice.h"
+#include "limeGl.h"
+#include "gfb.h"
 
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 
+namespace lime {
+
 LimeGLContext *g_currentContext = nullptr;
+} // namespace lime
+
+using namespace lime;
 
 namespace {
 #define NUM_SCREENS (2)
@@ -30,6 +36,28 @@ void setErrorEGL(EGLint error) {
     g_eglErrorFlag = error;
   }
 }
+
+const struct ColorConfig {
+  khronos_uint8_t r, g, b, a;
+  GPU_COLORBUF internal;
+} g_colorConfigs[] = {
+  { 5, 5, 5, 0, GPU_RB_RGB565 },
+  { 5, 5, 5, 1, GPU_RB_RGBA5551 },
+  { 4, 4, 4, 4, GPU_RB_RGBA4 },
+  { 8, 8, 8, 0, GPU_RB_RGB8 },
+  { 8, 8, 8, 8, GPU_RB_RGBA8 },
+  { 0xff, 0xff, 0xff, 0xff, (GPU_COLORBUF)0 },
+};
+
+const struct DepthConfig {
+  khronos_uint8_t d, s;
+  GPU_DEPTHBUF internal;
+} g_depthConfigs[] = {
+  { 16, 0, GPU_RB_DEPTH16 },
+  { 24, 0, GPU_RB_DEPTH24 },
+  { 24, 8, GPU_RB_DEPTH24_STENCIL8 },
+  { 0xff, 0xff, (GPU_DEPTHBUF)0 },
+};
 } // namespace
 
 EGLAPI EGLDisplay EGLAPIENTRY eglGetDisplay(EGLNativeDisplayType display_id) {
@@ -57,8 +85,11 @@ EGLAPI EGLBoolean EGLAPIENTRY eglInitialize(EGLDisplay dpy, EGLint *major,
     return EGL_TRUE;
   }
 
-  if (1)
-    return EGL_FALSE;
+  if (!(g_screens[0] || g_screens[1])) {
+    gfbInitDefault();
+  }
+
+  g_screens[display_id] = new LimeDevice;
 
   return EGL_TRUE;
 }
@@ -126,28 +157,36 @@ EGLAPI EGLBoolean EGLAPIENTRY eglChooseConfig(EGLDisplay dpy,
   }
 
   *num_config = 0;
-  if (stencil_size != EGL_DONT_CARE && stencil_size > 8) {
-    return EGL_TRUE;
+  for (int dci = 0; g_depthConfigs[dci].d != 0xff; ++dci) {
+    if (stencil_size != EGL_DONT_CARE && stencil_size > g_depthConfigs[dci].s) {
+      continue;
+    }
+    if (depth_size != EGL_DONT_CARE && depth_size > g_depthConfigs[dci].d) {
+      continue;
+    }
+    for (int cci = 0; g_colorConfigs[cci].r != 0xff; ++cci) {
+      if (alpha_size != EGL_DONT_CARE && alpha_size > g_colorConfigs[cci].a) {
+        continue;
+      }
+      if (blue_size != EGL_DONT_CARE && blue_size > g_colorConfigs[cci].b) {
+        continue;
+      }
+      if (green_size != EGL_DONT_CARE && green_size > g_colorConfigs[cci].g) {
+        continue;
+      }
+      if (red_size != EGL_DONT_CARE && red_size > g_colorConfigs[cci].r) {
+        continue;
+      }
+
+      if (*num_config >= config_size) {
+        goto configsChosen;
+      }
+
+      configs[(*num_config)++] = new uint16_t(cci | (dci << 8));
+    }
   }
-  if (depth_size != EGL_DONT_CARE && depth_size > 24) {
-    return EGL_TRUE;
-  }
-  if (alpha_size != EGL_DONT_CARE && alpha_size > 0) {
-    return EGL_TRUE;
-  }
-  if (blue_size != EGL_DONT_CARE && blue_size > 0) {
-    return EGL_TRUE;
-  }
-  if (green_size != EGL_DONT_CARE && green_size > 0) {
-    return EGL_TRUE;
-  }
-  if (red_size != EGL_DONT_CARE && red_size > 0) {
-    return EGL_TRUE;
-  }
-  if (config_size != 0) {
-    *configs = dpy;
-    *num_config = 1;
-  }
+
+configsChosen:
 
   return EGL_TRUE;
 }
@@ -155,7 +194,6 @@ EGLAPI EGLBoolean EGLAPIENTRY eglChooseConfig(EGLDisplay dpy,
 EGLAPI EGLContext EGLAPIENTRY eglCreateContext(EGLDisplay dpy, EGLConfig config,
                                                EGLContext share_context,
                                                const EGLint *attrib_list) {
-  (void)config;
   (void)attrib_list;
   const EGLNativeDisplayType display_id = static_cast<EGLNativeDisplayType>(
       reinterpret_cast<char *>(dpy) - reinterpret_cast<char *>(g_screens));
@@ -170,7 +208,9 @@ EGLAPI EGLContext EGLAPIENTRY eglCreateContext(EGLDisplay dpy, EGLConfig config,
     return share_context;
   }
 
-  auto context = new LimeGLContext;
+  auto cfg_set = *reinterpret_cast<uint16_t *>(config);
+  auto context = new LimeGLContext(g_colorConfigs[cfg_set & 0xff].internal,
+                                   g_depthConfigs[cfg_set >> 0x8].internal);
   g_screens[display_id]->set_context(context);
 
   return context;
@@ -210,8 +250,8 @@ EGLAPI EGLBoolean EGLAPIENTRY eglSwapBuffers(EGLDisplay dpy,
 
   reinterpret_cast<LimeDevice *>(device)->flush();
 
-  gfxFlushBuffers();
-  gfxSwapBuffersGpu();
+  gfbFlushBuffers();
+  gfbSwapBuffers();
   gspWaitForVBlank();
 
   return EGL_TRUE;
@@ -229,8 +269,47 @@ EGLAPI EGLBoolean EGLAPIENTRY eglMakeCurrent(EGLDisplay dpy, EGLSurface draw,
     return EGL_FALSE;
   }
 
-  g_currentContext = g_screens[display_id]->context();
+  lime::g_currentContext = g_screens[display_id]->context();
   return EGL_TRUE;
+}
+
+EGLAPI EGLBoolean EGLAPIENTRY eglTerminate(EGLDisplay dpy) {
+  const EGLNativeDisplayType display_id = static_cast<EGLNativeDisplayType>(
+      reinterpret_cast<char *>(dpy) - reinterpret_cast<char *>(g_screens));
+  if (display_id >= NUM_SCREENS) {
+    setErrorEGL(EGL_BAD_DISPLAY);
+    return EGL_FALSE;
+  }
+
+  auto dev = g_screens[display_id];
+  delete dev;
+
+  if (!(g_screens[0] || g_screens[1])) {
+    gfbExit();
+  }
+
+  return EGL_TRUE;
+}
+
+EGLAPI EGLBoolean EGLAPIENTRY eglDestroyContext(EGLDisplay dpy,
+                                                EGLContext ctx) {
+  (void)dpy;
+  (void)ctx;
+  return EGL_TRUE;
+}
+
+EGLAPI EGLBoolean EGLAPIENTRY eglDestroySurface(EGLDisplay dpy,
+                                                EGLSurface surface) {
+  (void)dpy;
+  (void)surface;
+  return EGL_TRUE;
+}
+
+EGLAPI EGLint EGLAPIENTRY eglGetError(void) {
+  EGLint error = g_eglErrorFlag;
+  g_eglErrorFlag = EGL_SUCCESS;
+
+  return error;
 }
 
 EGLAPI __eglMustCastToProperFunctionPointerType EGLAPIENTRY
@@ -256,40 +335,5 @@ eglGetProcAddress(const char *procname) {
     return pe->proc;
   }
   return nullptr;
-}
-
-EGLAPI EGLBoolean EGLAPIENTRY eglTerminate(EGLDisplay dpy) {
-  const EGLNativeDisplayType display_id = static_cast<EGLNativeDisplayType>(
-      reinterpret_cast<char *>(dpy) - reinterpret_cast<char *>(g_screens));
-  if (display_id >= NUM_SCREENS) {
-    setErrorEGL(EGL_BAD_DISPLAY);
-    return EGL_FALSE;
-  }
-
-  auto dev = g_screens[display_id];
-  delete dev;
-
-  return EGL_TRUE;
-}
-
-EGLAPI EGLBoolean EGLAPIENTRY eglDestroyContext(EGLDisplay dpy,
-                                                EGLContext ctx) {
-  (void)dpy;
-  (void)ctx;
-  return EGL_TRUE;
-}
-
-EGLAPI EGLBoolean EGLAPIENTRY eglDestroySurface(EGLDisplay dpy,
-                                                EGLSurface surface) {
-  (void)dpy;
-  (void)surface;
-  return EGL_TRUE;
-}
-
-EGLAPI EGLint EGLAPIENTRY eglGetError(void) {
-  EGLint error = g_eglErrorFlag;
-  g_eglErrorFlag = EGL_SUCCESS;
-
-  return error;
 }
 }

@@ -29,11 +29,10 @@ PROCTAB_CPP	:=	proctab.cpp
 #---------------------------------------------------------------------------------
 ARCH	:=	-march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 
-CFLAGS	+= -Wall -Wextra -Werror -funsigned-char -O2 $(ARCH)
+CFLAGS	+=	-Wall -Wextra -Werror -funsigned-char -O2 $(ARCH)
 
 CFLAGS	+=	$(INCLUDE) -D__3DS__
-CFLAGS	+=	-DLIME_VERSION=\"1.0\"
-CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++20 -fomit-frame-pointer
+CXXFLAGS	:=	$(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++20 -fomit-frame-pointer
 
 ASFLAGS	:= $(ARCH)
 

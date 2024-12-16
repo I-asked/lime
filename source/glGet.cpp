@@ -20,7 +20,7 @@ GL_API const GLubyte * GL_APIENTRY glGetString(GLenum name) {
     return ""_ucs;
 #endif
   default:
-    setErrorGL(GL_INVALID_ENUM);
+    lime::setErrorGL(GL_INVALID_ENUM);
     return nullptr;
   }
 }

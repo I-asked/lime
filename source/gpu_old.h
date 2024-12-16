@@ -8,7 +8,7 @@
 
 #include "macros.h"
 
-#include <3ds/gpu/gpu.h>
+#include <3ds.h>
 
 #ifdef __cplusplus
 extern "C" {

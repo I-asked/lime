@@ -12,3 +12,7 @@
 #ifndef DEPRECATED
 # define DEPRECATED [[gnu::deprecated]]
 #endif
+
+#define _bit(N) (1 << (N))
+
+#define _nop() asm volatile ("NOP")
