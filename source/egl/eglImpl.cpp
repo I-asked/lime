@@ -1,7 +1,7 @@
-#include "proctab.h"
+#include "lime.h"
 #include "macros.h"
+#include "proctab.h"
 
-#include "limeGl.h"
 #include <3ds.h>
 
 #include <cstdint>
@@ -72,12 +72,9 @@ const struct ColorConfig {
   khronos_uint8_t r, g, b, a;
   GPU_COLORBUF internal;
 } g_colorConfigs[] = {
-    {8, 8, 8, 8, GPU_RB_RGBA8},
-    {5, 6, 5, 0, GPU_RB_RGB565},
-    {5, 5, 5, 1, GPU_RB_RGBA5551},
-    {4, 4, 4, 4, GPU_RB_RGBA4},
-    {8, 8, 8, 0, GPU_RB_RGB8},
-    {0xff, 0xff, 0xff, 0xff, (GPU_COLORBUF)0},
+    {8, 8, 8, 8, GPU_RB_RGBA8},    {5, 6, 5, 0, GPU_RB_RGB565},
+    {5, 5, 5, 1, GPU_RB_RGBA5551}, {4, 4, 4, 4, GPU_RB_RGBA4},
+    {8, 8, 8, 0, GPU_RB_RGB8},     {0xff, 0xff, 0xff, 0xff, (GPU_COLORBUF)0},
 };
 
 const struct DepthConfig {
@@ -120,10 +117,8 @@ EGLAPI EGLBoolean EGLAPIENTRY eglInitialize(EGLDisplay dpy, EGLint *major,
 
   if (!(g_screens[0] || g_screens[1])) {
     gfxInit(GSP_RGBA8_OES, GSP_RGBA8_OES, false);
-    g_gpuCmd[0] =
-        reinterpret_cast<u32 *>(linearAlloc(GPU_CMD_SIZE * 4));
-    g_gpuCmd[1] =
-        reinterpret_cast<u32 *>(linearAlloc(GPU_CMD_SIZE * 4));
+    g_gpuCmd[0] = reinterpret_cast<u32 *>(linearAlloc(GPU_CMD_SIZE * 4));
+    g_gpuCmd[1] = reinterpret_cast<u32 *>(linearAlloc(GPU_CMD_SIZE * 4));
 
     GPU_Init(nullptr);
     GPU_Reset(nullptr, g_gpuCmd[0], GPU_CMD_SIZE);
@@ -292,7 +287,8 @@ EGLAPI EGLBoolean EGLAPIENTRY eglSwapBuffers(EGLDisplay dpy,
 
   extern u32 __ctru_linear_heap;
   extern u32 __ctru_linear_heap_size;
-  GX_FlushCacheRegions((u32 *)__ctru_linear_heap, __ctru_linear_heap_size, nullptr, 0, nullptr, 0);
+  GX_FlushCacheRegions((u32 *)__ctru_linear_heap, __ctru_linear_heap_size,
+                       nullptr, 0, nullptr, 0);
 
   gxCmdQueueWait(nullptr, -1);
   gxCmdQueueClear(&g_gxQueue);

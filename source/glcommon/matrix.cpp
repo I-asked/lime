@@ -1,4 +1,4 @@
-#include "limeGl.h"
+#include "lime.h"
 
 #include "gpu.h"
 
@@ -26,7 +26,7 @@ GL_API void GL_APIENTRY glMultMatrixx(const GLfixed *m) {
   g_currentContext->current_matrix().top() *= glm::make_mat4(mf) / 65536.f;
 }
 
-#else
+#else // LIME_GLES
 
 GL_API void GL_APIENTRY glLoadMatrixd(const GLdouble *m) {
   float mf[16];
@@ -42,7 +42,7 @@ GL_API void GL_APIENTRY glMultMatrixd(const GLdouble *m) {
   g_currentContext->current_matrix().top() *= glm::make_mat4(mf);
 }
 
-#endif
+#endif // LIME_GLES
 
 GL_API void GL_APIENTRY glLoadMatrixf(const GLfloat *m) {
   g_currentContext->current_matrix().top() = glm::make_mat4(m);

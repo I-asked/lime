@@ -1,14 +1,10 @@
-#include "limeGl.h"
+#include "lime.h"
 
 #include "gpu.h"
 
 #include "vshader_shbin.h"
 
 #include <glm/gtc/type_ptr.hpp>
-
-#define DISPLAY_TRANSFER_FLAGS                                                 \
-  (GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(0) |                       \
-   GX_TRANSFER_RAW_COPY(0) | GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO))
 
 namespace lime {
 

@@ -1,13 +1,13 @@
 #pragma once
 
-#include "limeGl.h"
+#include "lime.h"
 
 #include <compare>
 #include <cstring>
 
 struct proctab_entry {
   const char *name;
-  void (* proc)();
+  void (*proc)();
 
   auto operator<=>(const proctab_entry &other) {
     return strcmp(name, other.name);

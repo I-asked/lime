@@ -17,7 +17,7 @@ include $(DEVKITARM)/3ds_rules
 #---------------------------------------------------------------------------------
 TARGET		:=	GL
 BUILD		:=	build_GL
-SOURCES		:=	source source/shaders
+SOURCES		:=	source source/glcommon source/shaders
 DATA		:=	data
 INCLUDES	:=	include source $(BUILD)
 

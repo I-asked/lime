@@ -1,12 +1,12 @@
-#include "limeGl.h"
+#include "lime.h"
 
 #include "gpu.h"
 #include "vertex.h"
-#include <memory>
 
 #include <glm/common.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <memory>
 
 using namespace lime;
 
@@ -34,7 +34,8 @@ GL_API void GL_APIENTRY glClear(GLbitfield mask) {
   GPU_SetStencilTest(false, GPU_NEVER, 0, 0xff, 0);
   GPU_SetStencilOp(GPU_STENCIL_KEEP, GPU_STENCIL_KEEP, GPU_STENCIL_KEEP);
   GPU_SetBlendingColor(0, 0, 0, 0);
-  GPU_SetDepthTestAndWriteMask(true, GPU_ALWAYS, static_cast<GPU_WRITEMASK>(writeMask));
+  GPU_SetDepthTestAndWriteMask(true, GPU_ALWAYS,
+                               static_cast<GPU_WRITEMASK>(writeMask));
 
   GPUCMD_AddMaskedWrite(GPUREG_EARLYDEPTH_TEST1, 0x1, 0);
   GPUCMD_AddWrite(GPUREG_EARLYDEPTH_TEST2, 0);
@@ -114,11 +115,11 @@ GL_API void GL_APIENTRY glClearDepthf(GLfloat d) {
   g_currentContext->m_clearDepth = _clampf(d);
 }
 
-#else
+#else // LIME_GLES
 
 GLAPI void GLAPIENTRY glClearDepth(GLclampd depth) {
   g_currentContext->m_clearDepth = depth;
 }
 
-#endif
+#endif // LIME_GLES
 }

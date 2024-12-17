@@ -17,7 +17,7 @@ include $(DEVKITARM)/3ds_rules
 #---------------------------------------------------------------------------------
 TARGET		:=	GLESv1
 BUILD		:=	build_GLESv1
-SOURCES		:=	source source/shaders
+SOURCES		:=	source source/glcommon source/shaders
 DATA		:=	data
 INCLUDES	:=	include source $(BUILD)
 
