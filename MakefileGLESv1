@@ -17,7 +17,7 @@ include $(DEVKITARM)/3ds_rules
 #---------------------------------------------------------------------------------
 TARGET		:=	GLESv1
 BUILD		:=	build_GLESv1
-SOURCES		:=	source
+SOURCES		:=	source source/shaders
 DATA		:=	data
 INCLUDES	:=	include source $(BUILD)
 
@@ -29,7 +29,9 @@ PROCTAB_CPP	:=	proctab.cpp
 #---------------------------------------------------------------------------------
 ARCH	:=	-march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 
-CFLAGS	+=	-Wall -Wextra -Werror -funsigned-char -O2 $(ARCH)
+BUILD_CFLAGS	?=	-O2
+CFLAGS	+=	-Wall -Wextra -Werror -funsigned-char \
+						$(ARCH) $(BUILD_CFLAGS)
 
 CFLAGS	+=	$(INCLUDE) -D__3DS__
 CFLAGS	+=	-DLIME_GLES=1
@@ -60,6 +62,7 @@ export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
+PICAFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
 BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
 
 #---------------------------------------------------------------------------------
@@ -77,6 +80,7 @@ endif
 #---------------------------------------------------------------------------------
 
 export OFILES	:=	$(addsuffix .o,$(BINFILES)) \
+			$(PICAFILES:.v.pica=.shbin.o) \
 			$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
 
 export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \

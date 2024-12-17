@@ -1,29 +1,35 @@
-/* originally from from https://github.com/smealum/ctrulib */
+/**
+ * @file gpu-old.h
+ * @brief Deprecated GPU functions which should not be used in new code.
+ * @description These functions have been superseeded by direct GPU register
+ * writes, or external GPU libraries.
+ * @deprecated
+ */
+#pragma once
 
-/*
-  gpu-old.c _ Legacy GPU commands.
-*/
+#include "macros.h"
 
 #include <3ds.h>
-#include <stdlib.h>
 #include <string.h>
 
-#include "gpu_old.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-void GPU_Init(Handle *gsphandle) {
+_inline static void GPU_Init(Handle *gsphandle) {
   (void)gsphandle;
-  gpuCmdBuf = NULL;
+  gpuCmdBuf = nullptr;
   gpuCmdBufSize = 0;
   gpuCmdBufOffset = 0;
 }
 
-void GPU_Reset(u32 *gxbuf, u32 *gpuBuf, u32 gpuBufSize) {
+_inline static void GPU_Reset(u32 *gxbuf, u32 *gpuBuf, u32 gpuBufSize) {
   (void)gxbuf;
   GPUCMD_SetBuffer(gpuBuf, gpuBufSize, 0);
 }
 
-void GPU_SetFloatUniform(GPU_SHADER_TYPE type, u32 startreg, u32 *data,
-                         u32 numreg) {
+_inline static void GPU_SetFloatUniform(GPU_SHADER_TYPE type, u32 startreg,
+                                        u32 *data, u32 numreg) {
   int regOffset = 0x0;
   ;
   if (!data)
@@ -38,8 +44,8 @@ void GPU_SetFloatUniform(GPU_SHADER_TYPE type, u32 startreg, u32 *data,
 }
 
 /* takes PAs as arguments */
-void GPU_SetViewport(u32 *depthBuffer, u32 *colorBuffer, u32 x, u32 y, u32 w,
-                     u32 h) {
+_inline static void GPU_SetViewport(u32 *depthBuffer, u32 *colorBuffer, u32 x,
+                                    u32 y, u32 w, u32 h) {
   u32 f116e;
   u32 param[0x4];
   float fw = (float)w;
@@ -83,8 +89,8 @@ void GPU_SetViewport(u32 *depthBuffer, u32 *colorBuffer, u32 x, u32 y, u32 w,
   GPUCMD_AddIncrementalWrites(GPUREG_COLORBUFFER_READ, param, 0x00000004);
 }
 
-void GPU_SetScissorTest(GPU_SCISSORMODE mode, u32 left, u32 bottom, u32 right,
-                        u32 top) {
+_inline static void GPU_SetScissorTest(GPU_SCISSORMODE mode, u32 left,
+                                       u32 bottom, u32 right, u32 top) {
   u32 param[3];
 
   param[0x0] = mode;
@@ -93,63 +99,68 @@ void GPU_SetScissorTest(GPU_SCISSORMODE mode, u32 left, u32 bottom, u32 right,
   GPUCMD_AddIncrementalWrites(GPUREG_SCISSORTEST_MODE, param, 0x00000003);
 }
 
-void GPU_DepthMap(float zScale, float zOffset) {
+_inline static void GPU_DepthMap(float zScale, float zOffset) {
   GPUCMD_AddWrite(GPUREG_DEPTHMAP_ENABLE, 0x00000001);
   GPUCMD_AddWrite(GPUREG_DEPTHMAP_SCALE, f32tof24(zScale));
   GPUCMD_AddWrite(GPUREG_DEPTHMAP_OFFSET, f32tof24(zOffset));
 }
 
-void GPU_SetAlphaTest(bool enable, GPU_TESTFUNC function, u8 ref) {
+_inline static void GPU_SetAlphaTest(bool enable, GPU_TESTFUNC function,
+                                     u8 ref) {
   GPUCMD_AddWrite(GPUREG_FRAGOP_ALPHA_TEST,
                   (enable & 1) | ((function & 7) << 4) | (ref << 8));
 }
 
-void GPU_SetStencilTest(bool enable, GPU_TESTFUNC function, u8 ref,
-                        u8 input_mask, u8 write_mask) {
+_inline static void GPU_SetStencilTest(bool enable, GPU_TESTFUNC function,
+                                       u8 ref, u8 input_mask, u8 write_mask) {
   GPUCMD_AddWrite(GPUREG_STENCIL_TEST, (enable & 1) | ((function & 7) << 4) |
                                            (write_mask << 8) | (ref << 16) |
                                            (input_mask << 24));
 }
 
-void GPU_SetStencilOp(GPU_STENCILOP sfail, GPU_STENCILOP dfail,
-                      GPU_STENCILOP pass) {
+_inline static void GPU_SetStencilOp(GPU_STENCILOP sfail, GPU_STENCILOP dfail,
+                                     GPU_STENCILOP pass) {
   GPUCMD_AddWrite(GPUREG_STENCIL_OP, sfail | (dfail << 4) | (pass << 8));
 }
 
-void GPU_SetDepthTestAndWriteMask(bool enable, GPU_TESTFUNC function,
-                                  GPU_WRITEMASK writemask) {
+_inline static void GPU_SetDepthTestAndWriteMask(bool enable,
+                                                 GPU_TESTFUNC function,
+                                                 GPU_WRITEMASK writemask) {
   GPUCMD_AddWrite(GPUREG_DEPTH_COLOR_MASK,
                   (enable & 1) | ((function & 7) << 4) | (writemask << 8));
 }
 
-void GPU_SetAlphaBlending(GPU_BLENDEQUATION colorEquation,
-                          GPU_BLENDEQUATION alphaEquation,
-                          GPU_BLENDFACTOR colorSrc, GPU_BLENDFACTOR colorDst,
-                          GPU_BLENDFACTOR alphaSrc, GPU_BLENDFACTOR alphaDst) {
+_inline static void GPU_SetAlphaBlending(GPU_BLENDEQUATION colorEquation,
+                                         GPU_BLENDEQUATION alphaEquation,
+                                         GPU_BLENDFACTOR colorSrc,
+                                         GPU_BLENDFACTOR colorDst,
+                                         GPU_BLENDFACTOR alphaSrc,
+                                         GPU_BLENDFACTOR alphaDst) {
   GPUCMD_AddWrite(GPUREG_BLEND_FUNC, colorEquation | (alphaEquation << 8) |
                                          (colorSrc << 16) | (colorDst << 20) |
                                          (alphaSrc << 24) | (alphaDst << 28));
   GPUCMD_AddMaskedWrite(GPUREG_COLOR_OPERATION, 0x2, 0x00000100);
 }
 
-void GPU_SetColorLogicOp(GPU_LOGICOP op) {
+_inline static void GPU_SetColorLogicOp(GPU_LOGICOP op) {
   GPUCMD_AddWrite(GPUREG_LOGIC_OP, op);
   GPUCMD_AddMaskedWrite(GPUREG_COLOR_OPERATION, 0x2, 0x00000000);
 }
 
-void GPU_SetBlendingColor(u8 r, u8 g, u8 b, u8 a) {
+_inline static void GPU_SetBlendingColor(u8 r, u8 g, u8 b, u8 a) {
   GPUCMD_AddWrite(GPUREG_BLEND_COLOR, r | (g << 8) | (b << 16) | (a << 24));
 }
 
-void GPU_SetTextureEnable(GPU_TEXUNIT units) {
+_inline static void GPU_SetTextureEnable(GPU_TEXUNIT units) {
   GPUCMD_AddMaskedWrite(GPUREG_SH_OUTATTR_CLOCK, 0x2,
                         units << 8); /* enables texcoord outputs */
   GPUCMD_AddWrite(GPUREG_TEXUNIT_CONFIG,
                   0x00011000 | units); /* enables texture units */
 }
 
-void GPU_SetTexture(GPU_TEXUNIT unit, u32 *data, u16 width, u16 height,
-                    u32 param, GPU_TEXCOLOR colorType) {
+_inline static void GPU_SetTexture(GPU_TEXUNIT unit, u32 *data, u16 width,
+                                   u16 height, u32 param,
+                                   GPU_TEXCOLOR colorType) {
   switch (unit) {
   case GPU_TEXUNIT0:
     GPUCMD_AddWrite(GPUREG_TEXUNIT0_TYPE, colorType);
@@ -174,7 +185,8 @@ void GPU_SetTexture(GPU_TEXUNIT unit, u32 *data, u16 width, u16 height,
   }
 }
 
-void GPU_SetTextureBorderColor(GPU_TEXUNIT unit, u32 borderColor) {
+_inline static void GPU_SetTextureBorderColor(GPU_TEXUNIT unit,
+                                              u32 borderColor) {
   switch (unit) {
   case GPU_TEXUNIT0:
     GPUCMD_AddWrite(GPUREG_TEXUNIT0_BORDER_COLOR, borderColor);
@@ -190,13 +202,12 @@ void GPU_SetTextureBorderColor(GPU_TEXUNIT unit, u32 borderColor) {
   }
 }
 
-const u8 GPU_FORMATSIZE[4] = {1, 1, 2, 4};
+_inline static void GPU_SetAttributeBuffers(
+    u8 totalAttributes, u32 *baseAddress, u64 attributeFormats,
+    u16 attributeMask, u64 attributePermutation, u8 numBuffers,
+    u32 bufferOffsets[], u64 bufferPermutations[], u8 bufferNumAttributes[]) {
+  static const u8 GPU_FORMATSIZE[4] = {1, 1, 2, 4};
 
-void GPU_SetAttributeBuffers(u8 totalAttributes, u32 *baseAddress,
-                             u64 attributeFormats, u16 attributeMask,
-                             u64 attributePermutation, u8 numBuffers,
-                             u32 bufferOffsets[], u64 bufferPermutations[],
-                             u8 bufferNumAttributes[]) {
   int i, j;
   u32 param[0x28];
   u8 sizeTable[0xC];
@@ -232,30 +243,33 @@ void GPU_SetAttributeBuffers(u8 totalAttributes, u32 *baseAddress,
                         0xA0000000 | (totalAttributes - 1));
   GPUCMD_AddWrite(GPUREG_VSH_NUM_ATTR, (totalAttributes - 1));
 
-  GPUCMD_AddIncrementalWrites(GPUREG_VSH_ATTRIBUTES_PERMUTATION_LOW,
-                              ((u32[]){attributePermutation & 0xFFFFFFFF,
-                                       (attributePermutation >> 32) & 0xFFFF}),
-                              2);
+  GPUCMD_AddIncrementalWrites(
+      GPUREG_VSH_ATTRIBUTES_PERMUTATION_LOW,
+      ((u32[]){(u32)attributePermutation & 0xFFFFFFFF,
+               (u32)(attributePermutation >> 32) & 0xFFFF}),
+      2);
 }
 
-void GPU_SetAttributeBuffersAddress(u32 *baseAddress) {
+_inline static void GPU_SetAttributeBuffersAddress(u32 *baseAddress) {
   GPUCMD_AddWrite(GPUREG_ATTRIBBUFFERS_LOC, ((u32)baseAddress) >> 3);
 }
 
-void GPU_SetFaceCulling(GPU_CULLMODE mode) {
+_inline static void GPU_SetFaceCulling(GPU_CULLMODE mode) {
   GPUCMD_AddWrite(GPUREG_FACECULLING_CONFIG, mode & 0x3);
 }
 
-void GPU_SetCombinerBufferWrite(u8 rgb_config, u8 alpha_config) {
+_inline static void GPU_SetCombinerBufferWrite(u8 rgb_config, u8 alpha_config) {
   GPUCMD_AddMaskedWrite(GPUREG_TEXENV_UPDATE_BUFFER, 0x2,
                         (rgb_config << 8) | (alpha_config << 12));
 }
 
-const u8 GPU_TEVID[] = {0xC0, 0xC8, 0xD0, 0xD8, 0xF0, 0xF8};
+_inline static void GPU_SetTexEnv(u8 id, u16 rgbSources, u16 alphaSources,
+                                  u16 rgbOperands, u16 alphaOperands,
+                                  GPU_COMBINEFUNC rgbCombine,
+                                  GPU_COMBINEFUNC alphaCombine,
+                                  u32 constantColor) {
+  static const u8 GPU_TEVID[] = {0xC0, 0xC8, 0xD0, 0xD8, 0xF0, 0xF8};
 
-void GPU_SetTexEnv(u8 id, u16 rgbSources, u16 alphaSources, u16 rgbOperands,
-                   u16 alphaOperands, GPU_COMBINEFUNC rgbCombine,
-                   GPU_COMBINEFUNC alphaCombine, u32 constantColor) {
   u32 param[0x5];
   if (id > 6)
     return;
@@ -269,7 +283,8 @@ void GPU_SetTexEnv(u8 id, u16 rgbSources, u16 alphaSources, u16 rgbOperands,
   GPUCMD_AddIncrementalWrites(GPUREG_0000 | GPU_TEVID[id], param, 0x00000005);
 }
 
-void GPU_DrawArray(GPU_Primitive_t primitive, u32 first, u32 count) {
+_inline static void GPU_DrawArray(GPU_Primitive_t primitive, u32 first,
+                                  u32 count) {
   /* set primitive type */
   GPUCMD_AddMaskedWrite(GPUREG_PRIMITIVE_CONFIG, 0x2, primitive);
   GPUCMD_AddMaskedWrite(GPUREG_RESTART_PRIMITIVE, 0x2, 0x00000001);
@@ -290,7 +305,8 @@ void GPU_DrawArray(GPU_Primitive_t primitive, u32 first, u32 count) {
   GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_FLUSH, 0x00000001);
 }
 
-void GPU_DrawElements(GPU_Primitive_t primitive, u32 *indexArray, u32 n) {
+_inline static void GPU_DrawElements(GPU_Primitive_t primitive, u32 *indexArray,
+                                     u32 n) {
   /* set primitive type */
   GPUCMD_AddMaskedWrite(GPUREG_PRIMITIVE_CONFIG, 0x2, primitive);
   GPUCMD_AddMaskedWrite(GPUREG_RESTART_PRIMITIVE, 0x2, 0x00000001);
@@ -313,13 +329,13 @@ void GPU_DrawElements(GPU_Primitive_t primitive, u32 *indexArray, u32 n) {
    * GPUREG_FRAMEBUFFER_FLUSH at the end? */
 }
 
-void GPU_FinishDrawing(void) {
+_inline static void GPU_FinishDrawing(void) {
   GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_FLUSH, 0x00000001);
   GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_INVALIDATE, 0x00000001);
   GPUCMD_AddWrite(GPUREG_EARLYDEPTH_CLEAR, 0x00000001);
 }
 
-void GPU_Finalize(void) {
+_inline static void GPU_Finalize(void) {
   GPUCMD_AddMaskedWrite(GPUREG_PRIMITIVE_CONFIG, 0x8, 0x00000000);
   GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_FLUSH, 0x00000001);
   GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_INVALIDATE, 0x00000001);
@@ -332,3 +348,23 @@ void GPU_Finalize(void) {
   GPUCMD_AddWrite(GPUREG_FINALIZE, 0x12345678);
 #endif
 }
+
+_inline static void GPU_SetDummyTexEnv(u8 num) {
+  GPU_SetTexEnv(num, GPU_TEVSOURCES(GPU_PREVIOUS, 0, 0),
+                GPU_TEVSOURCES(GPU_PREVIOUS, 0, 0), GPU_TEVOPERANDS(0, 0, 0),
+                GPU_TEVOPERANDS(0, 0, 0), GPU_REPLACE, GPU_REPLACE, 0xFFFFFFFF);
+}
+
+_inline static void GPU_FlushAndRun(void) {
+  extern u32 __ctru_linear_heap;
+  extern u32 __ctru_linear_heap_size;
+
+  GX_FlushCacheRegions(gpuCmdBuf, gpuCmdBufOffset * 4,
+                       (u32 *)__ctru_linear_heap, __ctru_linear_heap_size,
+                       nullptr, 0);
+  GX_ProcessCommandList(gpuCmdBuf, gpuCmdBufOffset * 4, 0x0);
+}
+
+#ifdef __cplusplus
+}
+#endif

@@ -1,7 +1,7 @@
 #include "proctab.h"
 
 #include "limeGl.h"
-#include "gfb.h"
+#include <3ds.h>
 
 #include <cstdint>
 #include <cstdlib>
@@ -17,7 +17,31 @@ using namespace lime;
 namespace {
 #define NUM_SCREENS (2)
 
+#define GPU_CMD_SIZE (0x40000)
+
+u32 *g_gpuCmd[2]{nullptr};
+u8 g_activeGpuCmd = 0;
+
+LightEvent g_swapEvent;
+
+gxCmdQueue_s g_gxQueue;
+
 LimeDevice *g_screens[NUM_SCREENS] = {nullptr, nullptr};
+
+bool g_swappable[NUM_SCREENS] = {false};
+
+void swap_buffers(void *arg) {
+  (void)arg;
+  if (g_swappable[GFX_TOP]) {
+    gfxScreenSwapBuffers(GFX_TOP, gfxIs3D());
+    g_swappable[GFX_TOP] = false;
+  }
+  if (g_swappable[GFX_BOTTOM]) {
+    gfxScreenSwapBuffers(GFX_TOP, false);
+    g_swappable[GFX_BOTTOM] = false;
+  }
+  LightEvent_Signal(&g_swapEvent);
+}
 } // namespace
 
 extern "C" {
@@ -41,37 +65,39 @@ const struct ColorConfig {
   khronos_uint8_t r, g, b, a;
   GPU_COLORBUF internal;
 } g_colorConfigs[] = {
-  { 5, 5, 5, 0, GPU_RB_RGB565 },
-  { 5, 5, 5, 1, GPU_RB_RGBA5551 },
-  { 4, 4, 4, 4, GPU_RB_RGBA4 },
-  { 8, 8, 8, 0, GPU_RB_RGB8 },
-  { 8, 8, 8, 8, GPU_RB_RGBA8 },
-  { 0xff, 0xff, 0xff, 0xff, (GPU_COLORBUF)0 },
+    {8, 8, 8, 8, GPU_RB_RGBA8},
+    {5, 6, 5, 0, GPU_RB_RGB565},
+    {5, 5, 5, 1, GPU_RB_RGBA5551},
+    {4, 4, 4, 4, GPU_RB_RGBA4},
+    {8, 8, 8, 0, GPU_RB_RGB8},
+    {0xff, 0xff, 0xff, 0xff, (GPU_COLORBUF)0},
 };
 
 const struct DepthConfig {
   khronos_uint8_t d, s;
   GPU_DEPTHBUF internal;
 } g_depthConfigs[] = {
-  { 16, 0, GPU_RB_DEPTH16 },
-  { 24, 0, GPU_RB_DEPTH24 },
-  { 24, 8, GPU_RB_DEPTH24_STENCIL8 },
-  { 0xff, 0xff, (GPU_DEPTHBUF)0 },
+    {24, 8, GPU_RB_DEPTH24_STENCIL8},
+    {16, 0, GPU_RB_DEPTH16},
+    {24, 0, GPU_RB_DEPTH24},
+    {0xff, 0xff, (GPU_DEPTHBUF)0},
 };
 } // namespace
 
-EGLAPI EGLDisplay EGLAPIENTRY eglGetDisplay(EGLNativeDisplayType display_id) {
-  if (display_id >= NUM_SCREENS)
+EGLAPI EGLDisplay EGLAPIENTRY eglGetDisplay(EGLNativeDisplayType displayId) {
+  if (displayId >= NUM_SCREENS)
     return EGL_NO_DISPLAY;
 
-  return g_screens + display_id;
+  consoleDebugInit(debugDevice_SVC);
+
+  return g_screens + displayId;
 }
 
 EGLAPI EGLBoolean EGLAPIENTRY eglInitialize(EGLDisplay dpy, EGLint *major,
                                             EGLint *minor) {
-  const EGLNativeDisplayType display_id = static_cast<EGLNativeDisplayType>(
+  const EGLNativeDisplayType displayId = static_cast<EGLNativeDisplayType>(
       reinterpret_cast<char *>(dpy) - reinterpret_cast<char *>(g_screens));
-  if (display_id >= NUM_SCREENS) {
+  if (displayId >= NUM_SCREENS) {
     setErrorEGL(EGL_BAD_DISPLAY);
     return EGL_FALSE;
   }
@@ -81,15 +107,33 @@ EGLAPI EGLBoolean EGLAPIENTRY eglInitialize(EGLDisplay dpy, EGLint *major,
   if (minor)
     *minor = 5;
 
-  if (g_screens[display_id]) {
+  if (g_screens[displayId]) {
     return EGL_TRUE;
   }
 
   if (!(g_screens[0] || g_screens[1])) {
-    gfbInitDefault();
+    gfxInit(GSP_RGBA8_OES, GSP_RGBA8_OES, false);
+    g_gpuCmd[0] =
+        reinterpret_cast<u32 *>(linearAlloc(GPU_CMD_SIZE * 4));
+    g_gpuCmd[1] =
+        reinterpret_cast<u32 *>(linearAlloc(GPU_CMD_SIZE * 4));
+
+    GPU_Init(nullptr);
+    GPU_Reset(nullptr, g_gpuCmd[0], GPU_CMD_SIZE);
+
+    g_gxQueue.maxEntries = 32;
+    g_gxQueue.entries = new gxCmdEntry_s[g_gxQueue.maxEntries];
+
+    GX_BindQueue(&g_gxQueue);
+    gxCmdQueueRun(&g_gxQueue);
+
+    gspSetEventCallback(GSPGPU_EVENT_PPF, swap_buffers, nullptr, false);
+
+    LightEvent_Init(&g_swapEvent, RESET_ONESHOT);
+    LightEvent_Signal(&g_swapEvent);
   }
 
-  g_screens[display_id] = new LimeDevice;
+  g_screens[displayId] = new LimeDevice(displayId);
 
   return EGL_TRUE;
 }
@@ -99,9 +143,9 @@ EGLAPI EGLBoolean EGLAPIENTRY eglChooseConfig(EGLDisplay dpy,
                                               EGLConfig *configs,
                                               EGLint config_size,
                                               EGLint *num_config) {
-  const EGLNativeDisplayType display_id = static_cast<EGLNativeDisplayType>(
+  const EGLNativeDisplayType displayId = static_cast<EGLNativeDisplayType>(
       reinterpret_cast<char *>(dpy) - reinterpret_cast<char *>(g_screens));
-  if (display_id >= NUM_SCREENS) {
+  if (displayId >= NUM_SCREENS) {
     setErrorEGL(EGL_BAD_DISPLAY);
     return EGL_FALSE;
   }
@@ -195,64 +239,69 @@ EGLAPI EGLContext EGLAPIENTRY eglCreateContext(EGLDisplay dpy, EGLConfig config,
                                                EGLContext share_context,
                                                const EGLint *attrib_list) {
   (void)attrib_list;
-  const EGLNativeDisplayType display_id = static_cast<EGLNativeDisplayType>(
+  const EGLNativeDisplayType displayId = static_cast<EGLNativeDisplayType>(
       reinterpret_cast<char *>(dpy) - reinterpret_cast<char *>(g_screens));
-  if (display_id >= NUM_SCREENS) {
+  if (displayId >= NUM_SCREENS) {
     setErrorEGL(EGL_BAD_DISPLAY);
     return EGL_FALSE;
   }
 
   if (share_context) {
-    g_screens[display_id]->set_context(
+    g_screens[displayId]->set_context(
         safe_cast(LimeGLContext *, share_context));
     return share_context;
   }
 
   auto cfg_set = *reinterpret_cast<uint16_t *>(config);
-  auto context = new LimeGLContext(g_colorConfigs[cfg_set & 0xff].internal,
+  auto context = new LimeGLContext(g_screens[displayId]->lcd_width(),
+                                   g_screens[displayId]->lcd_height(),
+                                   g_colorConfigs[cfg_set & 0xff].internal,
                                    g_depthConfigs[cfg_set >> 0x8].internal);
-  g_screens[display_id]->set_context(context);
+  g_screens[displayId]->set_context(context);
 
   return context;
-}
-
-EGLAPI EGLSurface EGLAPIENTRY
-eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config,
-                       NativeWindowType window, const EGLint *attrib_list) {
-  (void)window;
-  (void)config;
-  (void)attrib_list;
-  const EGLNativeDisplayType display_id = static_cast<EGLNativeDisplayType>(
-      reinterpret_cast<char *>(dpy) - reinterpret_cast<char *>(g_screens));
-  if (display_id >= NUM_SCREENS) {
-    setErrorEGL(EGL_BAD_DISPLAY);
-    return EGL_FALSE;
-  }
-
-  return dpy;
 }
 
 EGLAPI EGLBoolean EGLAPIENTRY eglSwapBuffers(EGLDisplay dpy,
                                              EGLSurface surface) {
   (void)surface;
-  const EGLNativeDisplayType display_id = static_cast<EGLNativeDisplayType>(
+  const EGLNativeDisplayType displayId = static_cast<EGLNativeDisplayType>(
       reinterpret_cast<char *>(dpy) - reinterpret_cast<char *>(g_screens));
-  if (display_id >= NUM_SCREENS) {
+  if (displayId >= NUM_SCREENS) {
     setErrorEGL(EGL_BAD_DISPLAY);
     return EGL_FALSE;
   }
 
-  LimeDevice *device = g_screens[display_id];
+  LimeDevice *device = g_screens[displayId];
   if (device == nullptr) {
     setErrorEGL(EGL_NOT_INITIALIZED);
     return EGL_FALSE;
   }
 
+  u32 *split;
+  u32 splitSize;
+
+  GPUCMD_Split(&split, &splitSize);
+
+  extern u32 __ctru_linear_heap;
+  extern u32 __ctru_linear_heap_size;
+  GX_FlushCacheRegions((u32 *)__ctru_linear_heap, __ctru_linear_heap_size, nullptr, 0, nullptr, 0);
+
+  gxCmdQueueWait(nullptr, -1);
+  gxCmdQueueClear(&g_gxQueue);
+
+  g_activeGpuCmd = !g_activeGpuCmd;
+  GPU_Reset(nullptr, g_gpuCmd[g_activeGpuCmd], GPU_CMD_SIZE);
+
+  GPUCMD_SetBufferOffset(0);
+
+  GX_ProcessCommandList(split, splitSize * 4, 0x0);
+
+  LightEvent_Wait(&g_swapEvent);
+
   reinterpret_cast<LimeDevice *>(device)->flush();
 
-  gfbFlushBuffers();
-  gfbSwapBuffers();
-  gspWaitForVBlank();
+  g_swappable[displayId] = true;
 
   return EGL_TRUE;
 }
@@ -262,30 +311,34 @@ EGLAPI EGLBoolean EGLAPIENTRY eglMakeCurrent(EGLDisplay dpy, EGLSurface draw,
   (void)draw;
   (void)read;
   (void)ctx;
-  const EGLNativeDisplayType display_id = static_cast<EGLNativeDisplayType>(
+  const EGLNativeDisplayType displayId = static_cast<EGLNativeDisplayType>(
       reinterpret_cast<char *>(dpy) - reinterpret_cast<char *>(g_screens));
-  if (display_id >= NUM_SCREENS) {
+  if (displayId >= NUM_SCREENS) {
     setErrorEGL(EGL_BAD_DISPLAY);
     return EGL_FALSE;
   }
+  if (g_screens[displayId] == nullptr) {
+    setErrorEGL(EGL_NOT_INITIALIZED);
+    return EGL_FALSE;
+  }
 
-  lime::g_currentContext = g_screens[display_id]->context();
+  g_currentContext = g_screens[displayId]->context();
   return EGL_TRUE;
 }
 
 EGLAPI EGLBoolean EGLAPIENTRY eglTerminate(EGLDisplay dpy) {
-  const EGLNativeDisplayType display_id = static_cast<EGLNativeDisplayType>(
+  const EGLNativeDisplayType displayId = static_cast<EGLNativeDisplayType>(
       reinterpret_cast<char *>(dpy) - reinterpret_cast<char *>(g_screens));
-  if (display_id >= NUM_SCREENS) {
+  if (displayId >= NUM_SCREENS) {
     setErrorEGL(EGL_BAD_DISPLAY);
     return EGL_FALSE;
   }
 
-  auto dev = g_screens[display_id];
+  auto dev = g_screens[displayId];
   delete dev;
 
   if (!(g_screens[0] || g_screens[1])) {
-    gfbExit();
+    gfxExit();
   }
 
   return EGL_TRUE;
