@@ -9,52 +9,51 @@
 #include <3ds.h>
 #include <glm/ext/vector_float4.hpp>
 
-#ifdef LIME_GLES
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#include <memory>
 
+#ifdef LIME_GLES
 #include <GLES/gl.h>
 #include <GLES/glext.h>
 #else
-#include <EGL/egl.h>
-#include <EGL/eglext.h>
-
 #include <GL/gl.h>
 #include <GL/glext.h>
 #endif
 
+#include <list>
+#include <stack>
+
 namespace lime {
 
-extern shaderProgram_s g_shader;
-extern DVLB_s *g_dvlb;
-
-void global_init();
+using MatStack = std::stack<glm::mat4, std::list<glm::mat4>>;
 
 _inline static void SetAttributeBuffers(u8 totalAttributes, u32 *baseAddress,
                                         u64 attributeFormats, u16 attributeMask,
                                         u64 attributePermutation) {
   u32 bufferOffsets[]{0};
   GPU_SetAttributeBuffers(totalAttributes, baseAddress, attributeFormats,
-                          attributeMask, attributePermutation, 1,
-                          bufferOffsets, &attributePermutation,
-                          &totalAttributes);
+                          attributeMask, attributePermutation, 1, bufferOffsets,
+                          &attributePermutation, &totalAttributes);
+}
+
+template <typename VboDeleter = linearFree_t>
+_inline void DrawPrimitives(GPU_Primitive_t prim,
+                            std::unique_ptr<Vertex3D, VboDeleter> &vertices,
+                            u32 offset, u32 count) {
+  SetAttributeBuffers(
+      4, reinterpret_cast<u32 *>(osConvertVirtToPhys(vertices.get())),
+      Vertex3D::format, 0xffc, 0x3210);
+  GPU_DrawArray(prim, offset, count);
+  GPU_FinishDrawing();
 }
 
 struct LimeGLContext {
   LimeGLContext(unsigned width, unsigned height, GPU_COLORBUF cbf,
-                GPU_DEPTHBUF dbf)
-      : m_side(GFX_LEFT), m_colorBufferFormat(cbf), m_depthBufferFormat(dbf),
-        m_error(GL_NO_ERROR), m_clearDepth(0.f), m_width(width),
-        m_height(height) {
-    global_init();
+                GPU_DEPTHBUF dbf);
 
-    m_bufLeft = reinterpret_cast<u32 *>(vramAlloc(width * height * 4));
-    m_dbufLeft = reinterpret_cast<u32 *>(vramAlloc(width * height * 4));
-    //GX_MemoryFill(
-    //  m_bufLeft,  0, &m_bufLeft[width*height],  GX_FILL_TRIGGER | GX_FILL_32BIT_DEPTH,
-    //  m_dbufLeft, 0, &m_dbufLeft[width*height], GX_FILL_TRIGGER | GX_FILL_32BIT_DEPTH);
-    //gspWaitForPSC0();
-  }
+  shaderProgram_s m_shader;
+  DVLB_s *m_dvlb = nullptr;
 
   _inline u32 *draw_target(GLenum typ = GL_COLOR_BUFFER_BIT) {
     if (typ == GL_COLOR_BUFFER_BIT) {
@@ -66,21 +65,63 @@ struct LimeGLContext {
     return nullptr;
   }
 
+  _inline MatStack &current_matrix() {
+    switch (m_matrixMode) {
+    case GL_PROJECTION:
+      return m_projection;
+    case GL_MODELVIEW:
+      return m_modelview;
+    case GL_TEXTURE:
+      return m_texture;
+    default:
+      abort();
+    }
+  }
+
+  void init3D();
+
+#ifndef LIME_NO_GL_ERROR_CHECKS
+  GLenum m_error;
+#endif
+
+  std::unique_ptr<Vertex3D, linearFree_t> m_clearVbo;
+
   gfx3dSide_t m_side;
 
   GPU_COLORBUF m_colorBufferFormat;
   GPU_DEPTHBUF m_depthBufferFormat;
 
-  GLenum m_error;
+  GLenum m_matrixMode;
+
   GLfloat m_clearDepth;
   glm::vec4 m_clearColor;
 
   unsigned m_width, m_height;
 
+  MatStack m_projection, m_modelview, m_texture;
+
   u32 *m_bufLeft;
   u32 *m_dbufLeft;
   u32 *m_bufRight;
   u32 *m_dbufRight;
+
+  union {
+    struct {
+      bool viewport : 1;
+      bool scissor : 1;
+      bool cull : 1;
+      bool blend : 1;
+      bool alpha : 1;
+      bool depth : 1;
+      bool texture : 1;
+      bool texenv : 1;
+      bool fog : 1;
+      bool matrixmode : 1;
+    };
+    u32 value;
+  } m_dirty;
+  static_assert(sizeof(m_dirty) == sizeof(m_dirty.value),
+                "m_dirty fits in u32");
 };
 
 struct LimeDevice final {
@@ -128,9 +169,13 @@ private:
 extern LimeGLContext *g_currentContext;
 
 _inline static void setErrorGL(GLenum error) {
+#ifndef LIME_NO_GL_ERROR_CHECKS
   if (g_currentContext->m_error == GL_NO_ERROR) {
     g_currentContext->m_error = error;
   }
+#else
+  (void)error;
+#endif
 }
 
 } // namespace lime

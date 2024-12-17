@@ -18,6 +18,8 @@
 ; Inputs
 .alias inpos v0
 .alias inclr v1
+.alias intc0 v2
+.alias intc1 v3
 
 .proc main
 	; r0 = (inpos.x, inpos.y, inpos.z, 1.0)
@@ -37,8 +39,8 @@
 	dp4 outpos.w, projection[3], r1
 	
 	; Set texcoords
-	mov outtc0, dummytcoord
-	mov outtc1, dummytcoord
+	mov outtc0, intc0
+	mov outtc1, intc1
 	mov outtc2, dummytcoord
 	
 	; Set vertex color

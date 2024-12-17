@@ -2,7 +2,6 @@
 
 #include "gpu.h"
 #include "vertex.h"
-#include <cstdio>
 #include <memory>
 
 #include <glm/common.hpp>
@@ -14,10 +13,6 @@ using namespace lime;
 extern "C" {
 
 GL_API void GL_APIENTRY glClear(GLbitfield mask) {
-  if (g_currentContext == nullptr) {
-    abort();
-  }
-
   int writeMask = 0;
   if (mask & GL_COLOR_BUFFER_BIT)
     writeMask |= GPU_WRITE_COLOR;
@@ -25,7 +20,7 @@ GL_API void GL_APIENTRY glClear(GLbitfield mask) {
     writeMask |= GPU_WRITE_DEPTH;
 
   const auto &cc = g_currentContext->m_clearColor;
-  const auto cd = g_currentContext->m_clearDepth;
+  const auto cd = -g_currentContext->m_clearDepth;
 
   GPU_SetViewport(reinterpret_cast<u32 *>(osConvertVirtToPhys(
                       g_currentContext->draw_target(GL_DEPTH_BUFFER_BIT))),
@@ -39,8 +34,7 @@ GL_API void GL_APIENTRY glClear(GLbitfield mask) {
   GPU_SetStencilTest(false, GPU_NEVER, 0, 0xff, 0);
   GPU_SetStencilOp(GPU_STENCIL_KEEP, GPU_STENCIL_KEEP, GPU_STENCIL_KEEP);
   GPU_SetBlendingColor(0, 0, 0, 0);
-  GPU_SetDepthTestAndWriteMask(true, GPU_ALWAYS,
-                               static_cast<GPU_WRITEMASK>(writeMask));
+  GPU_SetDepthTestAndWriteMask(true, GPU_ALWAYS, static_cast<GPU_WRITEMASK>(writeMask));
 
   GPUCMD_AddMaskedWrite(GPUREG_EARLYDEPTH_TEST1, 0x1, 0);
   GPUCMD_AddWrite(GPUREG_EARLYDEPTH_TEST2, 0);
@@ -49,6 +43,19 @@ GL_API void GL_APIENTRY glClear(GLbitfield mask) {
                        GPU_ONE_MINUS_SRC_ALPHA, GPU_SRC_ALPHA,
                        GPU_ONE_MINUS_SRC_ALPHA);
   GPU_SetAlphaTest(false, GPU_ALWAYS, 0);
+
+  for (int i = 0; i < 4; ++i) {
+    g_currentContext->m_clearVbo.get()[i].~Vertex3D();
+  }
+  constexpr auto wone = glm::vec4(.0f, .0f, .0f, 1.f);
+  // clang-format off
+  new (g_currentContext->m_clearVbo.get()) Vertex3D[4] {
+      {glm::vec3(-1.f, -1.f, cd), cc, wone, wone},
+      {glm::vec3( 1.f, -1.f, cd), cc, wone, wone},
+      {glm::vec3(-1.f,  1.f, cd), cc, wone, wone},
+      {glm::vec3( 1.f,  1.f, cd), cc, wone, wone},
+  };
+  // clang-format on
 
   GPU_SetTexEnv(
       0,
@@ -62,33 +69,23 @@ GL_API void GL_APIENTRY glClear(GLbitfield mask) {
   GPU_SetDummyTexEnv(4);
   GPU_SetDummyTexEnv(5);
 
-  shaderProgramUse(&g_shader);
+  shaderProgramUse(&g_currentContext->m_shader);
 
   auto idt = glm::identity<glm::mat4>();
 
   GPU_SetFloatUniform(
       GPU_VERTEX_SHADER,
-      shaderInstanceGetUniformLocation(g_shader.vertexShader, "projection"),
+      shaderInstanceGetUniformLocation(g_currentContext->m_shader.vertexShader,
+                                       "projection"),
       reinterpret_cast<u32 *>(glm::value_ptr(idt)), 4);
-  GPU_SetFloatUniform(
-      GPU_VERTEX_SHADER,
-      shaderInstanceGetUniformLocation(g_shader.vertexShader, "modelview"),
-      reinterpret_cast<u32 *>(glm::value_ptr(idt)), 4);
+  GPU_SetFloatUniform(GPU_VERTEX_SHADER,
+                      shaderInstanceGetUniformLocation(
+                          g_currentContext->m_shader.vertexShader, "modelview"),
+                      reinterpret_cast<u32 *>(glm::value_ptr(idt)), 4);
 
-  // clang-format off
-  auto clearVbo = reserve_linear_vbo({
-      {glm::vec3(-1.f, -1.f, cd), cc},
-      {glm::vec3( 1.f, -1.f, cd), cc},
-      {glm::vec3(-1.f,  1.f, cd), cc},
-      {glm::vec3( 1.f,  1.f, cd), cc},
-  });
-  // clang-format on
-  SetAttributeBuffers(
-      2, reinterpret_cast<u32 *>(osConvertVirtToPhys(clearVbo.get())),
-      VERTEX3D_FORMAT, 0xfffc, 0x10);
-  GPU_DrawArray(GPU_TRIANGLE_STRIP, 0, 4);
+  DrawPrimitives(GPU_TRIANGLE_STRIP, g_currentContext->m_clearVbo, 0, 4);
 
-  GPU_FinishDrawing();
+  g_currentContext->m_dirty.value = -1;
 }
 
 GL_API void GL_APIENTRY glClearColor(GLfloat red, GLfloat green, GLfloat blue,
@@ -100,12 +97,28 @@ GL_API void GL_APIENTRY glClearColor(GLfloat red, GLfloat green, GLfloat blue,
 }
 
 #ifdef LIME_GLES
-GL_API void GL_APIENTRY glClearDepthf(GLfloat d) {
-  g_currentContext->m_clearDepth = d;
+
+GL_API void GL_APIENTRY glClearColorx(GLfixed red, GLfixed green, GLfixed blue,
+                                      GLfixed alpha) {
+  g_currentContext->m_clearColor.r = _clampf(red / 65536.f);
+  g_currentContext->m_clearColor.g = _clampf(green / 65536.f);
+  g_currentContext->m_clearColor.b = _clampf(blue / 65536.f);
+  g_currentContext->m_clearColor.a = _clampf(alpha / 65536.f);
 }
+
+GL_API void GL_APIENTRY glClearDepthx(GLfixed d) {
+  g_currentContext->m_clearDepth = _clampf(d / 65536.f);
+}
+
+GL_API void GL_APIENTRY glClearDepthf(GLfloat d) {
+  g_currentContext->m_clearDepth = _clampf(d);
+}
+
 #else
+
 GLAPI void GLAPIENTRY glClearDepth(GLclampd depth) {
   g_currentContext->m_clearDepth = depth;
 }
+
 #endif
 }

@@ -1,4 +1,5 @@
 #include "proctab.h"
+#include "macros.h"
 
 #include "limeGl.h"
 #include <3ds.h>
@@ -53,12 +54,18 @@ extern const unsigned long proctab_egl_sz;
 extern proctab_entry *proctab_egl;
 
 namespace {
+#ifndef LIME_NO_EGL_ERROR_CHECKS
 EGLint g_eglErrorFlag = EGL_SUCCESS;
+#endif
 
-void setErrorEGL(EGLint error) {
+_inline void setErrorEGL(EGLint error) {
+#ifndef LIME_NO_EGL_ERROR_CHECKS
   if (g_eglErrorFlag == EGL_SUCCESS) {
     g_eglErrorFlag = error;
   }
+#else
+  (void)error;
+#endif
 }
 
 const struct ColorConfig {
